@@ -1,28 +1,32 @@
 {
     "products": {
         "P001": {
+            "product_id": "P001",
             "name": "Laptop",
             "price": 1200,
             "category": "Electronics",
-            "stock": 8
+            "stock": 4
         },
         "P002": {
+            "product_id": "P002",
             "name": "Mouse",
             "price": 25,
             "category": "Accessories",
-            "stock": 46
+            "stock": 38
         },
         "P003": {
+            "product_id": "P003",
             "name": "Keyboard",
             "price": 75,
             "category": "Accessories",
-            "stock": 16
+            "stock": 8
         },
         "P004": {
+            "product_id": "P004",
             "name": "Monitor",
             "price": 300,
             "category": "Electronics",
-            "stock": 13
+            "stock": 9
         }
     },
     "orders": [
