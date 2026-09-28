@@ -1,4 +1,6 @@
 import json
+from dataclasses import asdict
+from models import Product, Order, OrderItem
 # 1. Load JSON Data
 def load_data(filename):
     try:
@@ -6,7 +8,34 @@ def load_data(filename):
             data = json.load(file)
         if "products" not in data or "orders" not in data:
             raise ValueError("JSON must contain products and orders")
-        return data["products"], data["orders"]
+        products = {}
+        for product_id, product in data["products"].items():
+            products[product_id] = Product(
+                product_id=product_id,
+                name=product["name"],
+                price=product["price"],
+                category=product["category"],
+                stock=product["stock"]
+            )
+        orders = []
+        for order in data["orders"]:
+            items = []
+            for item in order["items"]:
+                items.append(
+                    OrderItem(
+                        product_id=item["product_id"],
+                        quantity=item["quantity"]
+                    )
+                )
+            orders.append(
+                Order(
+                    order_id=order["order_id"],
+                    customer=order["customer"],
+                    items=items,
+                    payment_status=order["payment_status"]
+                )
+            )
+        return products, orders
     except FileNotFoundError:
         print("Error: JSON file not found.")
         return {}, []
@@ -20,8 +49,14 @@ def load_data(filename):
 def save_data(filename, products, orders):
     try:
         data = {
-            "products": products,
-            "orders": orders
+            "products": {
+                product_id: asdict(product)
+                for product_id, product in products.items()
+            },
+            "orders": [
+                asdict(order)
+                for order in orders
+            ]
         }
         with open(filename, "w") as file:
             json.dump(data, file, indent=4)
@@ -31,31 +66,28 @@ def save_data(filename, products, orders):
     except OSError as error:
         print("Error while saving file:", error)
 # 3. Validate Orders
-def validate_order(order, products):
+def validate_order(order, products, check_stock=True):
     try:
-        if "items" not in order:
+        if not order.items:
             raise ValueError("Order has no items.")
-        if "payment_status" not in order:
+        if not order.payment_status:
             raise ValueError("Payment status is missing.")
-        for item in order["items"]:
-            if "product_id" not in item:
+        for item in order.items:
+            if not item.product_id:
                 raise ValueError("Product ID is missing.")
-            if "quantity" not in item:
-                raise ValueError("Quantity is missing.")
-            product_id = item["product_id"]
-            quantity = item["quantity"]
-            if product_id not in products:
+            if item.product_id not in products:
                 raise ValueError(
-                    f"Invalid product ID: {product_id}"
+                    f"Invalid product ID: {item.product_id}"
                 )
-            if not isinstance(quantity, int) or quantity <= 0:
+            if not isinstance(item.quantity, int) or item.quantity <= 0:
                 raise ValueError(
                     "Quantity must be a positive integer."
                 )
-            if quantity > products[product_id]["stock"]:
-                raise ValueError(
-                    f"Not enough stock for {product_id}"
-                )
+            if check_stock:
+                if item.quantity > products[item.product_id].stock:
+                    raise ValueError(
+                        f"Not enough stock for {item.product_id}"
+                    )
         return True
     except (ValueError, TypeError, KeyError) as error:
         print("Order validation error:", error)
@@ -63,11 +95,9 @@ def validate_order(order, products):
 # 4. Calculate Order Subtotal
 def calculate_order_subtotal(order, products):
     sub_total = 0
-    for item in order["items"]:
-        product_id = item["product_id"]
-        quantity = item["quantity"]
-        price = products[product_id]["price"]
-        sub_total += price * quantity
+    for item in order.items:
+        product = products[item.product_id]
+        sub_total += product.price * item.quantity
     return sub_total
 # 5. Apply Discounts
 def calculate_discount(subtotal):
@@ -97,7 +127,7 @@ def calculate_total(*amounts):
 def process_order(order, products, **kwargs):
     if not validate_order(order, products):
         return 0
-    if order["payment_status"] != "paid":
+    if order.payment_status != "paid":
         return 0
     subtotal = calculate_order_subtotal(
         order,
@@ -119,12 +149,10 @@ def process_order(order, products, **kwargs):
 def update_inventory(order, products):
     if not validate_order(order, products):
         return
-    if order["payment_status"] != "paid":
+    if order.payment_status != "paid":
         return
-    for item in order["items"]:
-        product_id = item["product_id"]
-        quantity = item["quantity"]
-        products[product_id]["stock"] -= quantity
+    for item in order.items:
+        products[item.product_id].stock -= item.quantity
 # 10. Generate Reports
 def generate_report(orders, products):
     total_orders = len(orders)
@@ -138,15 +166,15 @@ def generate_report(orders, products):
     product_sales = {}
     unique_customers = set()
     for order in orders:
-        if not validate_order(order, products):
+        if not validate_order(order, products, check_stock=False):
             rejected_orders += 1
             continue
-        if order["payment_status"] == "pending":
+        if order.payment_status == "pending":
             pending_orders += 1
             continue
-        if order["payment_status"] == "paid":
+        if order.payment_status == "paid":
             paid_orders += 1
-            customer = order["customer"]
+            customer = order.customer
             unique_customers.add(customer)
             subtotal = calculate_order_subtotal(
                 order,
@@ -166,16 +194,16 @@ def generate_report(orders, products):
             if customer not in customer_sales:
                 customer_sales[customer] = 0
             customer_sales[customer] += revenue
-            for item in order["items"]:
-                product_id = item["product_id"]
-                quantity = item["quantity"]
+            for item in order.items:
+                product_id = item.product_id
+                quantity = item.quantity
                 if product_id not in product_sales:
                     product_sales[product_id] = 0
                 product_sales[product_id] += quantity
     low_stock_products = [
-        product["name"]
+        product.name
         for product in products.values()
-        if product["stock"] < 10
+        if product.stock < 10
     ]
     print("\n========== SALES REPORT ==========")
     print("Total Orders:", total_orders)
@@ -201,7 +229,7 @@ def generate_report(orders, products):
         product_id = top_product[0]
         print(
             "Top Selling Product:",
-            products[product_id]["name"]
+            products[product_id].name
         )
     else:
         print("Top Selling Product: None")
@@ -213,11 +241,12 @@ def generate_report(orders, products):
         print("None")
     print("Unique Customers:", unique_customers)
     print("==================================")
+# Main Program
 if __name__ == "__main__":
     products, orders = load_data("data.json")
     if products and orders:
         for order in orders:
-            if order["payment_status"] == "paid":
+            if order.payment_status == "paid":
                 total = process_order(
                     order,
                     products,
@@ -225,8 +254,14 @@ if __name__ == "__main__":
                     include_shipping=True
                 )
                 if total > 0:
-                    update_inventory(order, products)
-        generate_report(orders, products)
+                    update_inventory(
+                        order,
+                        products
+                    )
+        generate_report(
+            orders,
+            products
+        )
         save_data(
             "data.json",
             products,
@@ -234,4 +269,3 @@ if __name__ == "__main__":
         )
     else:
         print("No data available.")
-
